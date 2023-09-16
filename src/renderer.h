@@ -5,14 +5,6 @@
 class Scene;
 class Camera;
 
-struct SceneBufferType
-{
-    glm::mat4 transform;
-    glm::mat4 pad0;
-    glm::mat4 pad1;
-    glm::mat4 pad2;
-};
-
 struct ViewBufferType
 {
     glm::mat4 view_matrix;
@@ -35,8 +27,6 @@ public:
 private:
     void update_rendertarget();
 
-    void update_scene_buffer();
-
     void update_view_buffer();
 
     uint32_t _width = 0;
@@ -45,7 +35,6 @@ private:
     Scene* _scene;
     bool _scene_dirty = true;
     Camera* _camera;
-    EzBuffer _scene_buffer = VK_NULL_HANDLE;
     EzBuffer _view_buffer = VK_NULL_HANDLE;
     EzTexture _color_rt = VK_NULL_HANDLE;
     EzTexture _depth_rt = VK_NULL_HANDLE;

@@ -18,8 +18,6 @@ Renderer::~Renderer()
 {
     uninit_rsg();
 
-    if (_scene_buffer)
-        ez_destroy_buffer(_scene_buffer);
     if (_view_buffer)
         ez_destroy_buffer(_view_buffer);
     if (_color_rt)
@@ -62,35 +60,6 @@ void Renderer::update_rendertarget()
     ez_create_texture_view(_depth_rt, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
 }
 
-void Renderer::update_scene_buffer()
-{
-    std::vector<SceneBufferType> elements;
-    for (auto node : _scene->nodes)
-    {
-        SceneBufferType element{};
-        element.transform = node->transform;
-        elements.push_back(element);
-    }
-    if (_scene_buffer)
-        ez_destroy_buffer(_scene_buffer);
-
-    EzBufferDesc buffer_desc{};
-    buffer_desc.size = elements.size() * sizeof(SceneBufferType);
-    buffer_desc.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    ez_create_buffer(buffer_desc, _scene_buffer);
-
-    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(_scene_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
-
-    ez_update_buffer(_scene_buffer, elements.size() * sizeof(SceneBufferType), 0, elements.data());
-
-    VkPipelineStageFlags2 stage_flags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    VkAccessFlags2 access_flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    barrier = ez_buffer_barrier(_scene_buffer, stage_flags, access_flags);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
-}
-
 void Renderer::update_view_buffer()
 {
     glm::mat4 proj_matrix = _camera->get_proj_matrix();
@@ -127,7 +96,6 @@ void Renderer::render(EzSwapchain swapchain)
     }
     if (_scene_dirty)
     {
-        update_scene_buffer();
         _scene_dirty = false;
     }
     update_view_buffer();

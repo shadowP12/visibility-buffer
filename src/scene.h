@@ -5,36 +5,45 @@
 #include <math/bounding_box.h>
 #include <rhi/ez_vulkan.h>
 
-struct Primitive
+#define MESHLET_SIZE 256
+
+struct Triangle
 {
-    BoundingBox bounds;
-    uint32_t vertex_count;
-    uint32_t index_count;
-    VkIndexType index_type;
-    VkPrimitiveTopology topology;
-    EzBuffer index_buffer;
-    EzBuffer vertex_buffer;
+    glm::vec3 v[3];
 };
 
-struct Mesh
+struct MeshletCompact
 {
-    std::string name;
-    std::vector<Primitive*> primitives;
+    uint32_t triangle_count;
+    uint32_t meshlet_start;
 };
 
-struct Node
+struct Meshlet
 {
-    std::string name;
-    glm::mat4 transform;
-    Mesh* mesh = nullptr;
+    glm::vec3 aabb_min, aabb_max;
+    glm::vec3 cone_center, cone_axis;
+    float cone_angle_cosine;
+    float distance_from_camera;
+    bool valid;
+};
+
+struct MeshletBatch
+{
+    std::vector<MeshletCompact> compacts;
+    std::vector<Meshlet> meshlets;
 };
 
 class Scene
 {
 public:
     ~Scene();
-
-    std::vector<Node*> nodes;
-    std::vector<Mesh*> meshes;
-    std::vector<Primitive*> primitives;
+    std::vector<MeshletBatch> meshlet_batchs;
+    std::vector<VkDrawIndexedIndirectCommand> draw_args;
+    EzBuffer position_buffer = VK_NULL_HANDLE;
+    EzBuffer normal_buffer = VK_NULL_HANDLE;
+    EzBuffer uv_buffer = VK_NULL_HANDLE;
+    EzBuffer index_buffer = VK_NULL_HANDLE;
+    EzBuffer transform_buffer = VK_NULL_HANDLE;
+    uint32_t vertex_count = 0;
+    uint32_t index_count = 0;
 };

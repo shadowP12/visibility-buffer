@@ -2,12 +2,9 @@
 
 Scene::~Scene()
 {
-    for (auto& prim : primitives)
-    {
-        ez_destroy_buffer(prim->index_buffer);
-        ez_destroy_buffer(prim->vertex_buffer);
-    }
-    primitives.clear();
-    meshes.clear();
-    nodes.clear();
+    ez_destroy_buffer(position_buffer);
+    ez_destroy_buffer(normal_buffer);
+    ez_destroy_buffer(uv_buffer);
+    ez_destroy_buffer(index_buffer);
+    ez_destroy_buffer(transform_buffer);
 }

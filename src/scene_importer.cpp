@@ -91,59 +91,21 @@ VkPrimitiveTopology get_topology(cgltf_primitive_type primitive_type)
     return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
-void combind_vertex_data(void* dst, void* src, uint32_t vertex_count, uint32_t attribute_size, uint32_t offset, uint32_t stride, uint32_t size)
-{
-    uint8_t* dst_data = (uint8_t*)dst + offset;
-    uint8_t* src_data = (uint8_t*)src;
-    for (uint32_t i = 0; i < vertex_count; i++)
-    {
-        memcpy(dst_data, src_data, attribute_size);
-        dst_data += stride;
-        src_data += attribute_size;
-    }
-}
-
-EzBuffer create_vertex_buffer(void* data, uint32_t data_size)
+EzBuffer create_rw_buffer(void* data, uint32_t data_size)
 {
     EzBuffer buffer;
     EzBufferDesc buffer_desc = {};
     buffer_desc.size = data_size;
-    buffer_desc.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_desc.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     ez_create_buffer(buffer_desc, buffer);
 
-    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer,VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_COPY_DEST);
     ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
 
     ez_update_buffer(buffer, data_size, 0, data);
 
-    barrier = ez_buffer_barrier(buffer,
-                                VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
-
-    return buffer;
-}
-
-EzBuffer create_index_buffer(void* data, uint32_t data_size)
-{
-    EzBuffer buffer;
-    EzBufferDesc buffer_desc = {};
-    buffer_desc.size = data_size;
-    buffer_desc.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    ez_create_buffer(buffer_desc, buffer);
-
-    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer,
-                                                       VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                                       VK_ACCESS_TRANSFER_WRITE_BIT);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
-
-    ez_update_buffer(buffer, data_size, 0, data);
-
-    barrier = ez_buffer_barrier(buffer,
-                                VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDEX_READ_BIT);
+    barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS);
     ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
 
     return buffer;
@@ -174,121 +136,89 @@ Scene* load_scene(const std::string& file_path)
         return nullptr;
     }
 
-    // Load meshes
-    std::map<cgltf_mesh*, Mesh*> mesh_helper;
-    for (size_t i = 0; i < data->meshes_count; ++i)
+    std::vector<glm::mat4> transforms;
+    std::vector<float> total_position_data;
+    std::vector<float> total_normal_data;
+    std::vector<float> total_uv_data;
+    std::vector<uint16_t> total_index_data;
+    for (size_t i = 0; i < data->nodes_count; ++i)
     {
-        Mesh* mesh = new Mesh();
-        scene->meshes.push_back(mesh);
-        cgltf_mesh* cmesh = &data->meshes[i];
-        mesh_helper[cmesh] = mesh;
+        cgltf_node* cnode = &data->nodes[i];
 
+        if (!cnode->mesh)
+            continue;
+
+        glm::mat4 transform = get_world_matrix(cnode);
+        cgltf_mesh* cmesh = &data->meshes[i];
         for (size_t j = 0; j < cmesh->primitives_count; j++)
         {
-            Primitive* primitive = new Primitive();
-            mesh->primitives.push_back(primitive);
-            scene->primitives.push_back(primitive);
-
             cgltf_primitive* cprimitive = &cmesh->primitives[j];
-            primitive->topology = get_topology(cprimitive->type);
-
-            // Vertices
-            uint32_t vertex_count = 0;
-            uint32_t vertex_buffer_size = 0;
-            uint32_t vertex_buffer_offset = 0;
-            uint32_t position_offset = -1;
-            uint32_t uv_offset = -1;
-            uint32_t normal_offset = -1;
-            uint32_t position_attribute_size = 0;
-            uint32_t uv_attribute_size = 0;
-            uint32_t normal_attribute_size = 0;
-            uint32_t position_data_size = 0;
-            uint32_t uv_data_size = 0;
-            uint32_t normal_data_size = 0;
 
             cgltf_attribute* position_attribute = get_gltf_attribute(cprimitive, cgltf_attribute_type_position);
             cgltf_accessor* position_accessor = position_attribute->data;
             cgltf_buffer_view* position_view = position_accessor->buffer_view;
-            uint8_t* position_data = (uint8_t*)(position_view->buffer->data) + position_accessor->offset + position_view->offset;
-            vertex_count = (uint32_t)position_accessor->count;
-            position_offset = vertex_buffer_offset;
-            position_attribute_size = sizeof(glm::vec3);
-            position_data_size = position_attribute_size * vertex_count;
-            vertex_buffer_offset += position_attribute_size;
-            vertex_buffer_size += position_data_size;
-            float* minp = &position_accessor->min[0];
-            float* maxp = &position_accessor->max[0];
+            uint32_t vertex_count = (uint32_t)position_accessor->count;
+            float* position_data = (float*)((uint8_t*)(position_view->buffer->data) + position_accessor->offset + position_view->offset);
+            total_position_data.insert(total_position_data.end(), position_data, position_data + vertex_count * 3);
 
             cgltf_attribute* normal_attribute = get_gltf_attribute(cprimitive, cgltf_attribute_type_normal);
             cgltf_accessor* normal_accessor = normal_attribute->data;
             cgltf_buffer_view* normal_view = normal_accessor->buffer_view;
-            uint8_t* normal_data = (uint8_t*)(normal_view->buffer->data) + normal_accessor->offset + normal_view->offset;
-            normal_offset = vertex_buffer_offset;
-            normal_attribute_size = sizeof(glm::vec3);
-            normal_data_size = normal_attribute_size * vertex_count;
-            vertex_buffer_offset += normal_attribute_size;
-            vertex_buffer_size += normal_data_size;
+            float* normal_data = (float*)((uint8_t*)(normal_view->buffer->data) + normal_accessor->offset + normal_view->offset);
+            total_normal_data.insert(total_normal_data.end(), normal_data, normal_data + vertex_count * 3);
 
             cgltf_attribute* texcoord_attribute = get_gltf_attribute(cprimitive, cgltf_attribute_type_texcoord);
             cgltf_accessor* texcoord_accessor = texcoord_attribute->data;
             cgltf_buffer_view* texcoord_view = texcoord_accessor->buffer_view;
-            uint8_t* uv_data = (uint8_t*)(texcoord_view->buffer->data) + texcoord_accessor->offset + texcoord_view->offset;
-            uv_offset = vertex_buffer_offset;
-            uv_attribute_size = sizeof(glm::vec2);
-            uv_data_size = uv_attribute_size * vertex_count;
-            vertex_buffer_offset += uv_attribute_size;
-            vertex_buffer_size += uv_data_size;
+            float* uv_data = (float*)((uint8_t*)(texcoord_view->buffer->data) + texcoord_accessor->offset + texcoord_view->offset);
+            total_uv_data.insert(total_uv_data.end(), uv_data, uv_data + vertex_count * 2);
 
-            uint8_t* vertex_data = (uint8_t*)malloc(sizeof(uint8_t) * vertex_buffer_size);
-            combind_vertex_data(vertex_data, position_data, vertex_count, position_attribute_size, position_offset, vertex_buffer_offset, position_data_size);
-            combind_vertex_data(vertex_data, normal_data, vertex_count, normal_attribute_size, normal_offset, vertex_buffer_offset, normal_data_size);
-            combind_vertex_data(vertex_data, uv_data, vertex_count, uv_attribute_size, uv_offset, vertex_buffer_offset, uv_data_size);
-            primitive->vertex_count = vertex_count;
-            primitive->vertex_buffer = create_vertex_buffer(vertex_data, sizeof(uint8_t) * vertex_buffer_size);
-            free(vertex_data);
-
-            // Indices
             cgltf_accessor* index_accessor = cprimitive->indices;
             cgltf_buffer_view* index_buffer_view = index_accessor->buffer_view;
             cgltf_buffer* index_buffer = index_buffer_view->buffer;
-            uint8_t* index_data = (uint8_t*)index_buffer->data + index_accessor->offset + index_buffer_view->offset;
+            uint16_t* index_data = (uint16_t*)((uint8_t*)index_buffer->data + index_accessor->offset + index_buffer_view->offset);
             uint32_t index_count = (uint32_t)index_accessor->count;
-            uint32_t index_data_size = 0;
-            if (index_accessor->component_type == cgltf_component_type_r_16u)
-            {
-                primitive->index_type = VK_INDEX_TYPE_UINT16;
-                index_data_size = index_count * sizeof(uint16_t);
-            }
-            else if (index_accessor->component_type == cgltf_component_type_r_32u)
-            {
-                primitive->index_type = VK_INDEX_TYPE_UINT32;
-                index_data_size = index_count * sizeof(uint32_t);
-            }
-            primitive->index_count = index_count;
-            primitive->index_buffer = create_index_buffer(index_data, index_data_size);
+            total_index_data.insert(total_index_data.end(), index_data, index_data + index_count);
 
-            // Bounds
-            primitive->bounds.merge(glm::vec3(minp[0], minp[1], minp[2]));
-            primitive->bounds.merge(glm::vec3(maxp[0], maxp[1], maxp[2]));
-            primitive->bounds.grow(0.02f);
+            // Meshlet
+            uint32_t triangle_count = index_count / 3;
+            uint32_t meshlet_count = (triangle_count + MESHLET_SIZE - 1) / MESHLET_SIZE;
+            MeshletBatch meshlet_batch;
+            for (size_t k = 0; k < meshlet_count; ++k)
+            {
+                uint32_t start = k * MESHLET_SIZE;
+                uint32_t end = glm::min(start + MESHLET_SIZE, triangle_count);
+                uint32_t meshlet_triangle_count = end - start;
+
+                glm::vec3 cone_axis = glm::vec3(0.0f, 0.0f, 0.0f);
+                BoundingBox bounds;
+                for (size_t triangle_index = 0; triangle_index < meshlet_triangle_count; ++triangle_index)
+                {
+                    //TODO
+                }
+            }
+            scene->meshlet_batchs.push_back(meshlet_batch);
+
+            VkDrawIndexedIndirectCommand draw_arg;
+            draw_arg.firstInstance = 0;
+            draw_arg.instanceCount = 1;
+            draw_arg.firstIndex = scene->index_count;
+            draw_arg.indexCount = index_count;
+            draw_arg.vertexOffset = 0;
+            scene->draw_args.push_back(draw_arg);
+            transforms.push_back(transform);
+
+            scene->vertex_count += vertex_count;
+            scene->index_count += index_count;
         }
     }
-
-    // Load nodes
-    for (size_t i = 0; i < data->nodes_count; ++i)
-    {
-        Node* node = new Node();
-        scene->nodes.push_back(node);
-        cgltf_node* cnode = &data->nodes[i];
-
-        node->name = cnode->name;
-
-        node->transform = get_world_matrix(cnode);
-
-        if (cnode->mesh)
-            node->mesh = mesh_helper[cnode->mesh];
-    }
-
     cgltf_free(data);
+
+    scene->position_buffer = create_rw_buffer(total_position_data.data(), total_position_data.size() * sizeof(float));
+    scene->normal_buffer = create_rw_buffer(total_normal_data.data(), total_normal_data.size() * sizeof(float));
+    scene->uv_buffer = create_rw_buffer(total_uv_data.data(), total_uv_data.size() * sizeof(float));
+    scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint16_t));
+    scene->transform_buffer = create_rw_buffer(transforms.data(), transforms.size() * sizeof(glm::mat4));
+
     return scene;
 }
