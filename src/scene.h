@@ -5,20 +5,15 @@
 #include <math/bounding_box.h>
 #include <rhi/ez_vulkan.h>
 
-#define MESHLET_SIZE 256
+#define CLUSTER_SIZE 256
 
-struct Triangle
-{
-    glm::vec3 v[3];
-};
-
-struct MeshletCompact
+struct ClusterCompact
 {
     uint32_t triangle_count;
-    uint32_t meshlet_start;
+    uint32_t cluster_start;
 };
 
-struct Meshlet
+struct Cluster
 {
     glm::vec3 aabb_min, aabb_max;
     glm::vec3 cone_center, cone_axis;
@@ -27,17 +22,17 @@ struct Meshlet
     bool valid;
 };
 
-struct MeshletBatch
+struct ClusterBatch
 {
-    std::vector<MeshletCompact> compacts;
-    std::vector<Meshlet> meshlets;
+    std::vector<ClusterCompact> compacts;
+    std::vector<Cluster> clusters;
 };
 
 class Scene
 {
 public:
     ~Scene();
-    std::vector<MeshletBatch> meshlet_batchs;
+    std::vector<ClusterBatch> cluster_batchs;
     std::vector<VkDrawIndexedIndirectCommand> draw_args;
     EzBuffer position_buffer = VK_NULL_HANDLE;
     EzBuffer normal_buffer = VK_NULL_HANDLE;

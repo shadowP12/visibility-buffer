@@ -180,24 +180,85 @@ Scene* load_scene(const std::string& file_path)
             uint32_t index_count = (uint32_t)index_accessor->count;
             total_index_data.insert(total_index_data.end(), index_data, index_data + index_count);
 
-            // Meshlet
+            // Cluster
+            // Based on "AMD GeometryFX" - https://github.com/GPUOpen-Effects/GeometryFX
             uint32_t triangle_count = index_count / 3;
-            uint32_t meshlet_count = (triangle_count + MESHLET_SIZE - 1) / MESHLET_SIZE;
-            MeshletBatch meshlet_batch;
-            for (size_t k = 0; k < meshlet_count; ++k)
+            uint32_t cluster_count = (triangle_count + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
+            ClusterBatch cluster_batch;
+            for (size_t k = 0; k < cluster_count; ++k)
             {
-                uint32_t start = k * MESHLET_SIZE;
-                uint32_t end = glm::min(start + MESHLET_SIZE, triangle_count);
-                uint32_t meshlet_triangle_count = end - start;
+                uint32_t start = k * CLUSTER_SIZE;
+                uint32_t end = glm::min(start + CLUSTER_SIZE, triangle_count);
 
                 glm::vec3 cone_axis = glm::vec3(0.0f, 0.0f, 0.0f);
                 BoundingBox bounds;
-                for (size_t triangle_index = 0; triangle_index < meshlet_triangle_count; ++triangle_index)
+                for (size_t triangle_index = start; triangle_index < end; ++triangle_index)
                 {
-                    //TODO
+                    int idx0 = (int)index_data[triangle_index];
+                    int idx1 = (int)index_data[triangle_index + 1];
+                    int idx2 = (int)index_data[triangle_index + 2];
+                    glm::vec3 v0(position_data[idx0 * 3], position_data[idx0 * 3 + 1], position_data[idx0 * 3 + 2]);
+                    glm::vec3 v1(position_data[idx1 * 3], position_data[idx1 * 3 + 1], position_data[idx1 * 3 + 2]);
+                    glm::vec3 v2(position_data[idx2 * 3], position_data[idx2 * 3 + 1], position_data[idx2 * 3 + 2]);
+                    bounds.merge(v0);
+                    bounds.merge(v1);
+                    bounds.merge(v2);
+                    glm::vec3 triangle_normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                    cone_axis = cone_axis - triangle_normal;
                 }
+
+                float cone_opening = 1;
+                bool valid_cluster = true;
+                cone_axis = glm::normalize(cone_axis);
+                glm::vec3 center = bounds.get_center();
+
+                float t = NEG_INF;
+                for (size_t triangle_index = start; triangle_index < end; ++triangle_index)
+                {
+                    int idx0 = (int)index_data[triangle_index];
+                    int idx1 = (int)index_data[triangle_index + 1];
+                    int idx2 = (int)index_data[triangle_index + 2];
+                    glm::vec3 v0(position_data[idx0 * 3], position_data[idx0 * 3 + 1], position_data[idx0 * 3 + 2]);
+                    glm::vec3 v1(position_data[idx1 * 3], position_data[idx1 * 3 + 1], position_data[idx1 * 3 + 2]);
+                    glm::vec3 v2(position_data[idx2 * 3], position_data[idx2 * 3 + 1], position_data[idx2 * 3 + 2]);
+                    glm::vec3 triangle_normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+                    const float directional_part = glm::dot(cone_axis, -triangle_normal);
+
+                    if (directional_part <= 0)
+                    {
+                        // No solution for this cluster - at least two triangles are facing each other
+                        valid_cluster = false;
+                        break;
+                    }
+
+                    // We need to intersect the plane with our cone ray which is center + t * coneAxis, and find the max
+                    // t along the cone ray (which points into the empty space) See: https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
+                    const float td = dot(center - v0, triangle_normal) / -directional_part;
+
+                    t = glm::max(t, td);
+
+                    cone_opening = glm::min(cone_opening, directional_part);
+                }
+
+                Cluster cluster{};
+                cluster.aabb_max = bounds.bb_max;
+                cluster.aabb_min = bounds.bb_min;
+                cluster.cone_axis = cone_axis;
+                cluster.cone_center = center + cone_axis * t;
+                // cos (PI/2 - acos (coneOpening))
+                cluster.cone_angle_cosine = glm::sqrt(1 - cone_opening * cone_opening);
+
+                // AMD_GEOMETRY_FX_ENABLE_CLUSTER_CENTER_SAFETY_CHECK
+                float aabb_size = glm::length(bounds.get_size());
+                float cone_center_to_center_distance = glm::length(cluster.cone_center - center);
+                if (cone_center_to_center_distance > (16 * aabb_size))
+                    valid_cluster = false;
+                cluster.valid = valid_cluster;
+
+                cluster_batch.clusters.push_back(cluster);
             }
-            scene->meshlet_batchs.push_back(meshlet_batch);
+            scene->cluster_batchs.push_back(cluster_batch);
 
             VkDrawIndexedIndirectCommand draw_arg;
             draw_arg.firstInstance = 0;
