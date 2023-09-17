@@ -38,4 +38,10 @@ private:
     EzBuffer _view_buffer = VK_NULL_HANDLE;
     EzTexture _color_rt = VK_NULL_HANDLE;
     EzTexture _depth_rt = VK_NULL_HANDLE;
+    friend class TriangleFilteringPass;
+    TriangleFilteringPass* _triangle_filtering_pass = nullptr;
+    friend class VisibilityBufferPass;
+    VisibilityBufferPass* _visibility_buffer_pass = nullptr;
+    friend class VisibilityBufferShadingPass;
+    VisibilityBufferShadingPass* _visibility_buffer_shading_pass = nullptr;
 };

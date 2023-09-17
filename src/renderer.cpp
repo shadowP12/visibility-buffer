@@ -2,6 +2,9 @@
 #include "camera.h"
 #include "scene.h"
 #include "rsg.h"
+#include "triangle_filtering_pass.h"
+#include "visibility_buffer_pass.h"
+#include "visibility_bufer_shading_pass.h"
 
 Renderer::Renderer()
 {
@@ -12,11 +15,19 @@ Renderer::Renderer()
     buffer_desc.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     ez_create_buffer(buffer_desc, _view_buffer);
+
+    _triangle_filtering_pass = new TriangleFilteringPass(this);
+    _visibility_buffer_pass = new VisibilityBufferPass(this);
+    _visibility_buffer_shading_pass = new VisibilityBufferShadingPass(this);
 }
 
 Renderer::~Renderer()
 {
     uninit_rsg();
+
+    delete _triangle_filtering_pass;
+    delete _visibility_buffer_pass;
+    delete _visibility_buffer_shading_pass;
 
     if (_view_buffer)
         ez_destroy_buffer(_view_buffer);
@@ -99,6 +110,12 @@ void Renderer::render(EzSwapchain swapchain)
         _scene_dirty = false;
     }
     update_view_buffer();
+
+    _triangle_filtering_pass->render();
+
+    _visibility_buffer_pass->render();
+
+    _visibility_buffer_shading_pass->render();
 
     // Copy to swapchain
     EzTexture src_rt = _color_rt;
