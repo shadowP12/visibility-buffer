@@ -1,0 +1,38 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : enable
+
+#include "shader_defs.glsl"
+
+layout(std430, binding = 0) restrict buffer DrawCounterBlock
+{
+    uint count;
+} draw_counter;
+
+layout(std430, binding = 1) restrict readonly buffer UncompactedDrawCommandBufferBlock
+{
+    UncompactedDrawCommand data[];
+} uncompacted_draw_command_buffer;
+
+layout(std430, binding = 2) restrict buffer DrawCommandBufferBlock
+{
+    DrawIndexedIndirectCommand data[];
+} draw_command_buffer;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+void main()
+{
+    if (gl_GlobalInvocationID.x >= MAX_DRAW_CMD_COUNT - 1)
+        return;
+
+    uint num_indices = uncompacted_draw_command_buffer.data[gl_GlobalInvocationID.x].num_indices;
+    if (num_indices == 0)
+        return;
+
+    uint count = atomicAdd(draw_counter.count, 1);
+    draw_command_buffer.data[count].index_count = num_indices;
+    draw_command_buffer.data[count].instance_count = 1;
+    draw_command_buffer.data[count].first_index = uncompacted_draw_command_buffer.data[gl_GlobalInvocationID.x].start_index;
+    draw_command_buffer.data[count].vertex_offset = 0;
+    draw_command_buffer.data[count].first_instance = 0;
+}

@@ -1,0 +1,124 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : enable
+
+#include "shader_defs.glsl"
+
+struct Vertex
+{
+    float x, y, z;
+};
+
+layout(std430, binding = 0) restrict readonly buffer VertexDataBufferBlock
+{
+    Vertex data[];
+} vertex_data_buffer;
+
+layout(std430, binding = 1) restrict readonly buffer indexDataBufferBlock
+{
+    uint data[];
+} index_data_buffer;
+
+layout(std430, binding = 2) restrict readonly buffer MeshConstantsBufferBlock
+{
+    MeshConstants data[];
+} mesh_constants_buffer;
+
+layout(std430, binding = 3) restrict readonly buffer BatchBufferBlock
+{
+    SmallBatchData data[];
+} batch_buffer;
+
+layout(std430, binding = 4) restrict writeonly buffer FilteredIndicesBufferBlock
+{
+    uint data[];
+} filtered_indices_buffer;
+
+layout(std430, binding = 5) restrict buffer UncompactedDrawCommandBufferBlock
+{
+    UncompactedDrawCommand data[];
+} uncompacted_draw_command_buffer;
+
+layout(std140, binding = 6) uniform ViewBuffer
+{
+    mat4 view_matrix;
+    mat4 proj_matrix;
+} view_buffer;
+
+shared uint work_group_output_slot;
+shared uint work_group_index_count;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+void main()
+{
+    if (gl_LocalInvocationID.x == 0)
+    {
+        work_group_index_count = 0;
+    }
+
+    groupMemoryBarrier();
+    barrier();
+
+    bool cull = true;
+    uint thread_output_slot = 0;
+
+    uint batch_mesh_index = batch_buffer.data[gl_WorkGroupID.x].mesh_index;
+    uint batch_input_index_offset = mesh_constants_buffer.data[batch_mesh_index].index_offset + batch_buffer.data[gl_WorkGroupID.x].index_offset;
+
+    if (gl_LocalInvocationID.x < batch_buffer.data[gl_WorkGroupID.x].face_count)
+    {
+        uint indices[3] =
+        {
+            index_data_buffer.data[gl_LocalInvocationID.x * 3 + 0 + batch_input_index_offset],
+            index_data_buffer.data[gl_LocalInvocationID.x * 3 + 1 + batch_input_index_offset],
+            index_data_buffer.data[gl_LocalInvocationID.x * 3 + 2 + batch_input_index_offset]
+        };
+
+        vec4 raw_vertices[3] =
+        {
+            vec4(vertex_data_buffer.data[indices[0]].x, vertex_data_buffer.data[indices[0]].y, vertex_data_buffer.data[indices[0]].z, 1.0),
+            vec4(vertex_data_buffer.data[indices[1]].x, vertex_data_buffer.data[indices[1]].y, vertex_data_buffer.data[indices[1]].z, 1.0),
+            vec4(vertex_data_buffer.data[indices[2]].x, vertex_data_buffer.data[indices[2]].y, vertex_data_buffer.data[indices[2]].z, 1.0)
+        };
+
+        mat4 mvp = view_matrix.proj_matrix * view_buffer.view_matrix;
+        vec4 vertices[3] =
+        {
+            mvp * raw_vertices[0],
+            mvp * raw_vertices[1],
+            mvp * raw_vertices[2]
+        };
+
+        // TODO: FilterTriangle
+        cull = false;
+        if (!cull)
+        {
+            thread_output_slot = atomicAdd(work_group_index_count, 3);
+        }
+
+        groupMemoryBarrier();
+        barrier();
+
+        uint batch_draw_index = batch_buffer.data[gl_WorkGroupID.x].accum_draw_index;
+        if (gl_LocalInvocationID.x == 0)
+        {
+            work_group_output_slot = atomicAdd(uncompacted_draw_command_buffer.data[batch_draw_index].num_indices, work_group_index_count);
+        }
+
+        groupMemoryBarrier();
+        memoryBarrier();
+        barrier();
+
+        if (!cull)
+        {
+            filtered_indices_buffer.data[work_group_output_slot + batch_buffer.data[gl_WorkGroupID.x].output_index_offset + thread_output_slot + 0] = indices[0];
+            filtered_indices_buffer.data[work_group_output_slot + batch_buffer.data[gl_WorkGroupID.x].output_index_offset + thread_output_slot + 1] = indices[1];
+            filtered_indices_buffer.data[work_group_output_slot + batch_buffer.data[gl_WorkGroupID.x].output_index_offset + thread_output_slot + 2] = indices[2];
+        }
+
+        if (gl_LocalInvocationID.x == 0 && gl_WorkGroupID.x == batch_buffer.data[gl_WorkGroupID.x].draw_batch_start)
+        {
+            uncompacted_draw_command_buffer.data[batch_draw_index].start_index = batch_buffer.data[gl_WorkGroupID.x].output_index_offset;
+        }
+    }
+}
