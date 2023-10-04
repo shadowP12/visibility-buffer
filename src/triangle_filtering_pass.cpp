@@ -19,11 +19,12 @@ TriangleFilteringPass::TriangleFilteringPass(Renderer* renderer)
     buffer_desc.size = sizeof(UncompactedDrawCommand) * MAX_DRAW_CMD_COUNT;
     ez_create_buffer(buffer_desc, _uncompacted_draw_command_buffer);
 
-    buffer_desc.size = sizeof(VkDrawIndexedIndirectCommand) * MAX_DRAW_CMD_COUNT;
-    ez_create_buffer(buffer_desc, _draw_command_buffer);
-
     buffer_desc.size = sizeof(DrawCounter);
     ez_create_buffer(buffer_desc, _draw_counter_buffer);
+
+    buffer_desc.size = sizeof(VkDrawIndexedIndirectCommand) * MAX_DRAW_CMD_COUNT;
+    buffer_desc.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    ez_create_buffer(buffer_desc, _draw_command_buffer);
 }
 
 TriangleFilteringPass::~TriangleFilteringPass()

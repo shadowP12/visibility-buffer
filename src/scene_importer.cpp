@@ -91,36 +91,29 @@ VkPrimitiveTopology get_topology(cgltf_primitive_type primitive_type)
     return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
-EzBuffer create_rw_buffer(uint32_t data_size)
+EzBuffer create_rw_buffer(void* data, uint32_t data_size, VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
 {
     EzBuffer buffer;
     EzBufferDesc buffer_desc = {};
     buffer_desc.size = data_size;
-    buffer_desc.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buffer_desc.usage = usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     ez_create_buffer(buffer_desc, buffer);
 
-    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
+    VkBufferMemoryBarrier2 barrier;
+    if (data)
+    {
+        barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_COPY_DEST);
+        ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
+        ez_update_buffer(buffer, data_size, 0, data);
+    }
 
-    return buffer;
-}
-
-EzBuffer create_rw_buffer(void* data, uint32_t data_size)
-{
-    EzBuffer buffer;
-    EzBufferDesc buffer_desc = {};
-    buffer_desc.size = data_size;
-    buffer_desc.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    ez_create_buffer(buffer_desc, buffer);
-
-    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_COPY_DEST);
-    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
-
-    ez_update_buffer(buffer, data_size, 0, data);
-
-    barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    EzResourceState flag = EZ_RESOURCE_STATE_UNDEFINED;
+    if ((usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0)
+        flag |= EZ_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    if ((usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) != 0)
+        flag |= EZ_RESOURCE_STATE_INDEX_BUFFER;
+    barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS | flag);
     ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
 
     return buffer;
@@ -301,11 +294,11 @@ Scene* load_scene(const std::string& file_path)
     }
     cgltf_free(data);
 
-    scene->position_buffer = create_rw_buffer(total_position_data.data(), total_position_data.size() * sizeof(float));
-    scene->normal_buffer = create_rw_buffer(total_normal_data.data(), total_normal_data.size() * sizeof(float));
-    scene->uv_buffer = create_rw_buffer(total_uv_data.data(), total_uv_data.size() * sizeof(float));
-    scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint16_t));
-    scene->filtered_index_buffer = create_rw_buffer(total_index_data.size() * sizeof(uint16_t));
+    scene->position_buffer = create_rw_buffer(total_position_data.data(), total_position_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    scene->normal_buffer = create_rw_buffer(total_normal_data.data(), total_normal_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    scene->uv_buffer = create_rw_buffer(total_uv_data.data(), total_uv_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint16_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    scene->filtered_index_buffer = create_rw_buffer(nullptr, total_index_data.size() * sizeof(uint16_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     scene->mesh_constants_buffer = create_rw_buffer(mesh_constants_list.data(), mesh_constants_list.size() * sizeof(MeshConstants));
 
     return scene;
