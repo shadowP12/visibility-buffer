@@ -43,6 +43,8 @@ layout(std140, binding = 6) uniform ViewBuffer
 {
     mat4 view_matrix;
     mat4 proj_matrix;
+    mat4 pad0;
+    mat4 pad1;
 } view_buffer;
 
 shared uint work_group_output_slot;
@@ -81,7 +83,7 @@ void main()
             vec4(vertex_data_buffer.data[indices[2]].x, vertex_data_buffer.data[indices[2]].y, vertex_data_buffer.data[indices[2]].z, 1.0)
         };
 
-        mat4 mvp = view_matrix.proj_matrix * view_buffer.view_matrix;
+        mat4 mvp = view_buffer.proj_matrix * view_buffer.view_matrix;
         vec4 vertices[3] =
         {
             mvp * raw_vertices[0],

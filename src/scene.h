@@ -22,23 +22,30 @@ struct Cluster
     bool valid;
 };
 
-struct ClusterBatch
+struct Mesh
 {
     std::vector<ClusterCompact> compacts;
     std::vector<Cluster> clusters;
+};
+
+struct MeshConstants
+{
+    uint32_t face_count;
+    uint32_t index_offset;
 };
 
 class Scene
 {
 public:
     ~Scene();
-    std::vector<ClusterBatch> cluster_batchs;
-    std::vector<VkDrawIndexedIndirectCommand> draw_args;
+    std::vector<Mesh> meshs;
+    std::vector<VkDrawIndexedIndirectCommand> draw_commands;
     EzBuffer position_buffer = VK_NULL_HANDLE;
     EzBuffer normal_buffer = VK_NULL_HANDLE;
     EzBuffer uv_buffer = VK_NULL_HANDLE;
     EzBuffer index_buffer = VK_NULL_HANDLE;
-    EzBuffer transform_buffer = VK_NULL_HANDLE;
+    EzBuffer filtered_index_buffer = VK_NULL_HANDLE;
+    EzBuffer mesh_constants_buffer = VK_NULL_HANDLE;
     uint32_t vertex_count = 0;
     uint32_t index_count = 0;
 };

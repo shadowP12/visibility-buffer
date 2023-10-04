@@ -91,6 +91,21 @@ VkPrimitiveTopology get_topology(cgltf_primitive_type primitive_type)
     return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
+EzBuffer create_rw_buffer(uint32_t data_size)
+{
+    EzBuffer buffer;
+    EzBufferDesc buffer_desc = {};
+    buffer_desc.size = data_size;
+    buffer_desc.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buffer_desc.memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    ez_create_buffer(buffer_desc, buffer);
+
+    VkBufferMemoryBarrier2 barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
+
+    return buffer;
+}
+
 EzBuffer create_rw_buffer(void* data, uint32_t data_size)
 {
     EzBuffer buffer;
@@ -137,6 +152,7 @@ Scene* load_scene(const std::string& file_path)
     }
 
     std::vector<glm::mat4> transforms;
+    std::vector<MeshConstants> mesh_constants_list;
     std::vector<float> total_position_data;
     std::vector<float> total_normal_data;
     std::vector<float> total_uv_data;
@@ -184,7 +200,7 @@ Scene* load_scene(const std::string& file_path)
             // Based on "AMD GeometryFX" - https://github.com/GPUOpen-Effects/GeometryFX
             uint32_t triangle_count = index_count / 3;
             uint32_t cluster_count = (triangle_count + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
-            ClusterBatch cluster_batch;
+            Mesh mesh;
             for (size_t k = 0; k < cluster_count; ++k)
             {
                 uint32_t start = k * CLUSTER_SIZE;
@@ -256,17 +272,27 @@ Scene* load_scene(const std::string& file_path)
                     valid_cluster = false;
                 cluster.valid = valid_cluster;
 
-                cluster_batch.clusters.push_back(cluster);
-            }
-            scene->cluster_batchs.push_back(cluster_batch);
+                ClusterCompact compact{};
+                compact.cluster_start = start;
+                compact.triangle_count = end - start;
 
-            VkDrawIndexedIndirectCommand draw_arg;
-            draw_arg.firstInstance = 0;
-            draw_arg.instanceCount = 1;
-            draw_arg.firstIndex = scene->index_count;
-            draw_arg.indexCount = index_count;
-            draw_arg.vertexOffset = 0;
-            scene->draw_args.push_back(draw_arg);
+                mesh.clusters.push_back(cluster);
+                mesh.compacts.push_back(compact);
+            }
+            scene->meshs.push_back(mesh);
+
+            MeshConstants mesh_constants{};
+            mesh_constants.face_count = triangle_count;
+            mesh_constants.index_offset = scene->index_count;
+            mesh_constants_list.push_back(mesh_constants);
+
+            VkDrawIndexedIndirectCommand draw_command;
+            draw_command.firstInstance = 0;
+            draw_command.instanceCount = 1;
+            draw_command.firstIndex = scene->index_count;
+            draw_command.indexCount = index_count;
+            draw_command.vertexOffset = 0;
+            scene->draw_commands.push_back(draw_command);
             transforms.push_back(transform);
 
             scene->vertex_count += vertex_count;
@@ -279,7 +305,8 @@ Scene* load_scene(const std::string& file_path)
     scene->normal_buffer = create_rw_buffer(total_normal_data.data(), total_normal_data.size() * sizeof(float));
     scene->uv_buffer = create_rw_buffer(total_uv_data.data(), total_uv_data.size() * sizeof(float));
     scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint16_t));
-    scene->transform_buffer = create_rw_buffer(transforms.data(), transforms.size() * sizeof(glm::mat4));
+    scene->filtered_index_buffer = create_rw_buffer(total_index_data.size() * sizeof(uint16_t));
+    scene->mesh_constants_buffer = create_rw_buffer(mesh_constants_list.data(), mesh_constants_list.size() * sizeof(MeshConstants));
 
     return scene;
 }
