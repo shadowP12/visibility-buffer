@@ -18,17 +18,24 @@ void VisibilityBufferPass::render()
 {
     ez_reset_pipeline_state();
 
-    VkImageMemoryBarrier2 barriers[1];
+    VkImageMemoryBarrier2 barriers[2];
     barriers[0] = ez_image_barrier(_renderer->_vb_rt, EZ_RESOURCE_STATE_RENDERTARGET);
-    ez_pipeline_barrier(0, 0, nullptr, 1, barriers);
+    barriers[1] = ez_image_barrier(_renderer->_depth_rt, EZ_RESOURCE_STATE_DEPTH_WRITE);
+    ez_pipeline_barrier(0, 0, nullptr, 2, barriers);
 
     EzRenderingAttachmentInfo color_info{};
     color_info.texture = _renderer->_vb_rt;
     color_info.clear_value.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    EzRenderingAttachmentInfo depth_info{};
+    depth_info.texture = _renderer->_depth_rt;
+    depth_info.clear_value.depthStencil = {1.0f, 1};
+
     EzRenderingInfo rendering_info{};
     rendering_info.width = _renderer->_width;
     rendering_info.height = _renderer->_height;
     rendering_info.colors.push_back(color_info);
+    rendering_info.depth.push_back(depth_info);
     ez_begin_rendering(rendering_info);
 
     ez_set_viewport(0, 0, (float)_renderer->_width, (float)_renderer->_height);
@@ -49,7 +56,7 @@ void VisibilityBufferPass::render()
     EzBuffer draw_command_buffer = _renderer->_triangle_filtering_pass->get_draw_command_buffer();
     uint32_t draw_count = _renderer->_triangle_filtering_pass->get_draw_count();
     ez_bind_vertex_buffer(vertex_buffer);
-    ez_bind_index_buffer(index_buffer, VK_INDEX_TYPE_UINT16);
+    ez_bind_index_buffer(index_buffer, VK_INDEX_TYPE_UINT32);
     ez_draw_indexed_indirect(draw_command_buffer, 0, draw_count, sizeof(VkDrawIndexedIndirectCommand));
 
     ez_end_rendering();

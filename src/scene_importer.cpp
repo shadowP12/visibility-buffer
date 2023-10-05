@@ -149,7 +149,7 @@ Scene* load_scene(const std::string& file_path)
     std::vector<float> total_position_data;
     std::vector<float> total_normal_data;
     std::vector<float> total_uv_data;
-    std::vector<uint16_t> total_index_data;
+    std::vector<uint32_t> total_index_data;
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
         cgltf_node* cnode = &data->nodes[i];
@@ -185,8 +185,25 @@ Scene* load_scene(const std::string& file_path)
             cgltf_accessor* index_accessor = cprimitive->indices;
             cgltf_buffer_view* index_buffer_view = index_accessor->buffer_view;
             cgltf_buffer* index_buffer = index_buffer_view->buffer;
-            uint16_t* index_data = (uint16_t*)((uint8_t*)index_buffer->data + index_accessor->offset + index_buffer_view->offset);
             uint32_t index_count = (uint32_t)index_accessor->count;
+            uint32_t* index_data = nullptr;
+            uint32_t* index_u32_data = nullptr;
+            uint16_t* index_u16_data = nullptr;
+            if (index_accessor->component_type == cgltf_component_type_r_16u)
+            {
+                index_u32_data = new uint32_t[index_count];
+                index_u16_data = (uint16_t*)((uint8_t*)index_buffer->data + index_accessor->offset + index_buffer_view->offset);
+                for (int k = 0; k < index_count; ++k)
+                {
+                    index_u32_data[k] = (uint32_t)index_u16_data[k];
+                }
+                index_data = index_u32_data;
+            }
+            else if (index_accessor->component_type == cgltf_component_type_r_32u)
+            {
+                index_data = (uint32_t*)((uint8_t*)index_buffer->data + index_accessor->offset + index_buffer_view->offset);
+            }
+
             total_index_data.insert(total_index_data.end(), index_data, index_data + index_count);
 
             // Cluster
@@ -290,6 +307,9 @@ Scene* load_scene(const std::string& file_path)
 
             scene->vertex_count += vertex_count;
             scene->index_count += index_count;
+
+            if (index_u32_data)
+                delete[] index_u32_data;
         }
     }
     cgltf_free(data);
@@ -297,8 +317,8 @@ Scene* load_scene(const std::string& file_path)
     scene->position_buffer = create_rw_buffer(total_position_data.data(), total_position_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     scene->normal_buffer = create_rw_buffer(total_normal_data.data(), total_normal_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     scene->uv_buffer = create_rw_buffer(total_uv_data.data(), total_uv_data.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint16_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    scene->filtered_index_buffer = create_rw_buffer(nullptr, total_index_data.size() * sizeof(uint16_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    scene->filtered_index_buffer = create_rw_buffer(nullptr, total_index_data.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     scene->mesh_constants_buffer = create_rw_buffer(mesh_constants_list.data(), mesh_constants_list.size() * sizeof(MeshConstants));
 
     return scene;
