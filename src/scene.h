@@ -46,6 +46,7 @@ public:
     EzBuffer index_buffer = VK_NULL_HANDLE;
     EzBuffer filtered_index_buffer = VK_NULL_HANDLE;
     EzBuffer mesh_constants_buffer = VK_NULL_HANDLE;
+    EzBuffer draw_command_buffer = VK_NULL_HANDLE; // Test
     uint32_t vertex_count = 0;
     uint32_t index_count = 0;
 };

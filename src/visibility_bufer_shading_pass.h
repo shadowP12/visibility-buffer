@@ -1,4 +1,5 @@
 #pragma once
+#include <rhi/ez_vulkan.h>
 
 class Renderer;
 
@@ -13,4 +14,5 @@ public:
 
 private:
     Renderer* _renderer;
+    EzSampler _sampler = VK_NULL_HANDLE;
 };

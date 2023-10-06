@@ -8,4 +8,5 @@ Scene::~Scene()
     ez_destroy_buffer(index_buffer);
     ez_destroy_buffer(filtered_index_buffer);
     ez_destroy_buffer(mesh_constants_buffer);
+    ez_destroy_buffer(draw_command_buffer);
 }

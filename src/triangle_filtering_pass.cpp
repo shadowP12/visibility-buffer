@@ -51,6 +51,12 @@ void TriangleFilteringPass::render()
     ez_set_compute_shader(ShaderManager::get()->get_shader("shader://clear_buffers.comp"));
     ez_dispatch(std::max(1u, (uint32_t)(MAX_DRAW_CMD_COUNT) / 256), 1, 1);
 
+    // Synchronization
+    barriers[0] = ez_buffer_barrier(_draw_counter_buffer, EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    barriers[1] = ez_buffer_barrier(_draw_command_buffer, EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    barriers[2] = ez_buffer_barrier(_uncompacted_draw_command_buffer, EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    ez_pipeline_barrier(0, 3, barriers, 0, nullptr);
+
     // Triangle filtering
     int accum_draw_count = 0;
     int accum_num_triangles = 0;
@@ -68,6 +74,7 @@ void TriangleFilteringPass::render()
             const ClusterCompact* compact = &mesh->compacts[j];
 
             bool cull_cluster = false;
+            if (cluster->valid)
             {
                 glm::vec3 test_vec = glm::normalize(_renderer->_camera->get_translation() - cluster->cone_center);
                 if (glm::dot(test_vec, cluster->cone_axis) < cluster->cone_angle_cosine)
@@ -110,6 +117,10 @@ void TriangleFilteringPass::render()
     filter_triangles();
 
     _draw_count = accum_draw_count;
+
+    // Synchronization
+    barriers[0] = ez_buffer_barrier(_uncompacted_draw_command_buffer, EZ_RESOURCE_STATE_UNORDERED_ACCESS);
+    ez_pipeline_barrier(0, 1, barriers, 0, nullptr);
 
     // Batch compaction
     ez_bind_buffer(0, _draw_counter_buffer, _draw_counter_buffer->size);

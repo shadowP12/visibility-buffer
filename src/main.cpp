@@ -54,8 +54,8 @@ int main()
 
     Camera* camera = new Camera();
     camera->set_aspect(800.0f/600.0f);
-    camera->set_translation(glm::vec3(-0.0805398598f, 1.67968583f, 2.28514051f));
-    camera->set_euler(glm::vec3(-0.183999985f, 0.0930000245f, 0.0f));
+    camera->set_translation(glm::vec3(1.28223431f, 13.497385f, -5.47421837f));
+    camera->set_euler(glm::vec3(-1.66900015f, -0.0499999598f, 0.0f));
     CameraController* camera_controller = new CameraController();
     camera_controller->set_camera(camera);
     Scene* scene = load_scene("scene://dragon/dragon.gltf");

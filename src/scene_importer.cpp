@@ -113,6 +113,8 @@ EzBuffer create_rw_buffer(void* data, uint32_t data_size, VkBufferUsageFlags usa
         flag |= EZ_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
     if ((usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) != 0)
         flag |= EZ_RESOURCE_STATE_INDEX_BUFFER;
+    if ((usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0)
+        flag |= EZ_RESOURCE_STATE_INDIRECT_ARGUMENT;
     barrier = ez_buffer_barrier(buffer, EZ_RESOURCE_STATE_SHADER_RESOURCE | EZ_RESOURCE_STATE_UNORDERED_ACCESS | flag);
     ez_pipeline_barrier(0, 1, &barrier, 0, nullptr);
 
@@ -220,9 +222,9 @@ Scene* load_scene(const std::string& file_path)
                 BoundingBox bounds;
                 for (size_t triangle_index = start; triangle_index < end; ++triangle_index)
                 {
-                    int idx0 = (int)index_data[triangle_index];
-                    int idx1 = (int)index_data[triangle_index + 1];
-                    int idx2 = (int)index_data[triangle_index + 2];
+                    int idx0 = (int)index_data[triangle_index * 3 + 0];
+                    int idx1 = (int)index_data[triangle_index * 3 + 1];
+                    int idx2 = (int)index_data[triangle_index * 3 + 2];
                     glm::vec3 v0(position_data[idx0 * 3], position_data[idx0 * 3 + 1], position_data[idx0 * 3 + 2]);
                     glm::vec3 v1(position_data[idx1 * 3], position_data[idx1 * 3 + 1], position_data[idx1 * 3 + 2]);
                     glm::vec3 v2(position_data[idx2 * 3], position_data[idx2 * 3 + 1], position_data[idx2 * 3 + 2]);
@@ -235,15 +237,17 @@ Scene* load_scene(const std::string& file_path)
 
                 float cone_opening = 1;
                 bool valid_cluster = true;
+                if (cone_axis == glm::vec3(0.0, 0.0, 0.0))
+                    valid_cluster = false;
                 cone_axis = glm::normalize(cone_axis);
                 glm::vec3 center = bounds.get_center();
 
                 float t = NEG_INF;
                 for (size_t triangle_index = start; triangle_index < end; ++triangle_index)
                 {
-                    int idx0 = (int)index_data[triangle_index];
-                    int idx1 = (int)index_data[triangle_index + 1];
-                    int idx2 = (int)index_data[triangle_index + 2];
+                    int idx0 = (int)index_data[triangle_index * 3 + 0];
+                    int idx1 = (int)index_data[triangle_index * 3 + 1];
+                    int idx2 = (int)index_data[triangle_index * 3 + 2];
                     glm::vec3 v0(position_data[idx0 * 3], position_data[idx0 * 3 + 1], position_data[idx0 * 3 + 2]);
                     glm::vec3 v1(position_data[idx1 * 3], position_data[idx1 * 3 + 1], position_data[idx1 * 3 + 2]);
                     glm::vec3 v2(position_data[idx2 * 3], position_data[idx2 * 3 + 1], position_data[idx2 * 3 + 2]);
@@ -320,6 +324,6 @@ Scene* load_scene(const std::string& file_path)
     scene->index_buffer = create_rw_buffer(total_index_data.data(), total_index_data.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     scene->filtered_index_buffer = create_rw_buffer(nullptr, total_index_data.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     scene->mesh_constants_buffer = create_rw_buffer(mesh_constants_list.data(), mesh_constants_list.size() * sizeof(MeshConstants));
-
+    scene->draw_command_buffer = create_rw_buffer(scene->draw_commands.data(), scene->draw_commands.size() * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
     return scene;
 }
