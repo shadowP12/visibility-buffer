@@ -2,7 +2,7 @@
 #include "triangle_filtering_pass.h"
 #include "renderer.h"
 #include "scene.h"
-#include <rhi/shader_manager.h>
+#include <rhi/rhi_shader_mgr.h>
 
 VisibilityBufferPass::VisibilityBufferPass(Renderer* renderer)
 {
@@ -49,8 +49,8 @@ void VisibilityBufferPass::render()
     ez_set_viewport(0, 0, (float)_renderer->_width, (float)_renderer->_height);
     ez_set_scissor(0, 0, (int32_t)_renderer->_width, (int32_t)_renderer->_height);
 
-    ez_set_vertex_shader(ShaderManager::get()->get_shader("shader://visibility_buffer_pass.vert"));
-    ez_set_fragment_shader(ShaderManager::get()->get_shader("shader://visibility_buffer_pass.frag"));
+    ez_set_vertex_shader(rhi_get_shader("shader://visibility_buffer_pass.vert"));
+    ez_set_fragment_shader(rhi_get_shader("shader://visibility_buffer_pass.frag"));
 
     ez_bind_buffer(0, _renderer->_view_buffer, _renderer->_view_buffer->size);
 

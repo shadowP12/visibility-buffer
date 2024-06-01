@@ -2,7 +2,7 @@
 #include "renderer.h"
 #include "scene.h"
 #include "camera.h"
-#include <rhi/shader_manager.h>
+#include <rhi/rhi_shader_mgr.h>
 
 TriangleFilteringPass::TriangleFilteringPass(Renderer* renderer)
 {
@@ -48,7 +48,7 @@ void TriangleFilteringPass::render()
     // Clear buffers
     ez_bind_buffer(0, _draw_counter_buffer, _draw_counter_buffer->size);
     ez_bind_buffer(1, _uncompacted_draw_command_buffer, _uncompacted_draw_command_buffer->size);
-    ez_set_compute_shader(ShaderManager::get()->get_shader("shader://clear_buffers.comp"));
+    ez_set_compute_shader(rhi_get_shader("shader://clear_buffers.comp"));
     ez_dispatch(std::max(1u, (uint32_t)(MAX_DRAW_CMD_COUNT) / 256), 1, 1);
 
     // Synchronization
@@ -126,7 +126,7 @@ void TriangleFilteringPass::render()
     ez_bind_buffer(0, _draw_counter_buffer, _draw_counter_buffer->size);
     ez_bind_buffer(1, _uncompacted_draw_command_buffer, _uncompacted_draw_command_buffer->size);
     ez_bind_buffer(2, _draw_command_buffer, _draw_command_buffer->size);
-    ez_set_compute_shader(ShaderManager::get()->get_shader("shader://batch_compaction.comp"));
+    ez_set_compute_shader(rhi_get_shader("shader://batch_compaction.comp"));
     ez_dispatch(std::max(1u, (uint32_t)(MAX_DRAW_CMD_COUNT) / 256), 1, 1);
 }
 
@@ -147,7 +147,7 @@ void TriangleFilteringPass::filter_triangles()
     ez_bind_buffer(4, _renderer->_scene->filtered_index_buffer, _renderer->_scene->filtered_index_buffer->size);
     ez_bind_buffer(5, _uncompacted_draw_command_buffer, _uncompacted_draw_command_buffer->size);
     ez_bind_buffer(6, _renderer->_view_buffer, _renderer->_view_buffer->size);
-    ez_set_compute_shader(ShaderManager::get()->get_shader("shader://triangle_filtering.comp"));
+    ez_set_compute_shader(rhi_get_shader("shader://triangle_filtering.comp"));
     ez_dispatch(_small_batch_chunk.current_batch_count, 1, 1);
 
     _small_batch_chunk.current_batch_count = 0;

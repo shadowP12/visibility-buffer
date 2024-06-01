@@ -5,10 +5,9 @@
 #include "renderer.h"
 #include <core/path.h>
 #include <core/io/file_access.h>
-#include <input/input.h>
+#include <input/input_events.h>
 #include <rhi/ez_vulkan.h>
-#include <rhi/shader_manager.h>
-#include <rhi/shader_compiler.h>
+#include <rhi/rhi_shader_mgr.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
@@ -19,17 +18,45 @@ static void window_size_callback(GLFWwindow* window, int w, int h)
 
 static void cursor_position_callback(GLFWwindow* window, double pos_x, double pos_y)
 {
-    Input::get()->set_mouse_position((float)pos_x, (float)pos_y);
+    MouseEvent mouse_event;
+    mouse_event.type = MouseEvent::Type::MOVE;
+    mouse_event.x = (float)pos_x;
+    mouse_event.y = (float)pos_y;
+    Input::get_mouse_event().broadcast(mouse_event);
 }
 
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
-    Input::get()->set_mouse_button(button, action);
+    double pos_x, pos_y;
+    glfwGetCursorPos(window, &pos_x, &pos_y);
+
+    if (action == 0)
+    {
+        MouseEvent mouse_event;
+        mouse_event.type = MouseEvent::Type::UP;
+        mouse_event.x = (float)pos_x;
+        mouse_event.y = (float)pos_y;
+        mouse_event.button = button;
+        Input::get_mouse_event().broadcast(mouse_event);
+    }
+    else if (action == 1)
+    {
+        MouseEvent mouse_event;
+        mouse_event.type = MouseEvent::Type::DOWN;
+        mouse_event.x = (float)pos_x;
+        mouse_event.y = (float)pos_y;
+        mouse_event.button = button;
+        Input::get_mouse_event().broadcast(mouse_event);
+    }
 }
 
 static void mouse_scroll_callback(GLFWwindow* window, double offset_x, double offset_y)
 {
-    Input::get()->set_mouse_scroll((float)offset_y);
+    MouseEvent mouse_event;
+    mouse_event.type = MouseEvent::Type::WHEEL;
+    mouse_event.offset_x = (float)offset_x;
+    mouse_event.offset_y = (float)offset_y;
+    Input::get_mouse_event().broadcast(mouse_event);
 }
 
 int main()
@@ -40,8 +67,7 @@ int main()
     Path::register_protocol("shader", std::string(PROJECT_DIR) + "/content/shader/");
 
     ez_init();
-    ShaderManager::get()->setup();
-    ShaderCompiler::get()->setup();
+    rhi_shader_mgr_init();
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* glfw_window = glfwCreateWindow(1024, 768, "visibility-buffer", nullptr, nullptr);
@@ -87,9 +113,6 @@ int main()
         ez_present(swapchain);
 
         ez_submit();
-
-        // Reset input
-        Input::get()->reset();
     }
 
     delete renderer;
@@ -100,8 +123,7 @@ int main()
     ez_destroy_swapchain(swapchain);
     glfwDestroyWindow(glfw_window);
     glfwTerminate();
-    ShaderManager::get()->cleanup();
-    ShaderCompiler::get()->cleanup();
+    rhi_shader_mgr_terminate();
     ez_flush();
     ez_terminate();
     return 0;
